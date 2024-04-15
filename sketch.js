@@ -17,7 +17,7 @@ class Pebble {
     this.body = Bodies.circle(x, y, size / 2, {
       restitution: 0.8,
       friction: 0.5,
-      mass: 0.5, // Realistic mass for better physics interaction
+      mass: 0.5 * size, // Realistic mass for better physics interaction
       density: 0.5,
     });
     this.size = size;
@@ -57,44 +57,16 @@ function setup() {
 
   // Create rectangular bodies for left and right arms
   // Initially position these at a default location
-  leftHand = Bodies.circle(100, 100, 100, { isStatic: false }); // radius of 30
-  rightHand = Bodies.circle(100, 100, 100, { isStatic: false });
+  // Create rectangular bodies for left and right hands with increased mass
+  leftHand = Bodies.circle(100, 100, 30, { isStatic: false, mass: 10 }); // Increased mass
+  rightHand = Bodies.circle(100, 100, 30, { isStatic: false, mass: 10 }); // Increased mass
   World.add(world, [leftHand, rightHand]);
 
   poseNet = ml5.poseNet(video, modelReady);
   poseNet.on("pose", (results) => (poses = results));
   video.hide();
 
-  Matter.Events.on(engine, "collisionStart", function (event) {
-    let pairs = event.pairs;
-    pairs.forEach(function (pair) {
-      let hand = null;
-      let pebble = null;
-
-      // Determine if the collision is between a hand and a pebble
-      if (pair.bodyA === leftHand || pair.bodyA === rightHand) {
-        hand = pair.bodyA;
-        pebble = pebbles.find((p) => p.body === pair.bodyB);
-      } else if (pair.bodyB === leftHand || pair.bodyB === rightHand) {
-        hand = pair.bodyB;
-        pebble = pebbles.find((p) => p.body === pair.bodyA);
-      }
-
-      if (hand && pebble) {
-        // Calculate relative velocity
-        let relativeVelocity = Matter.Vector.sub(hand.velocity, pebble.body.velocity);
-        let speed = Matter.Vector.magnitude(relativeVelocity);
-
-        // Apply a force based on the speed of the collision
-        let forceMagnitude = speed * pebble.body.mass * 0.01; // Adjust multiplier based on desired intensity
-        let forceDirection = Matter.Vector.normalise(relativeVelocity);
-        let force = Matter.Vector.mult(forceDirection, forceMagnitude);
-
-        // Apply the force to the pebble
-        Matter.Body.applyForce(pebble.body, pebble.body.position, force);
-      }
-    });
-  });
+  //matterCollisions();
 }
 
 function modelReady() {
@@ -111,7 +83,7 @@ function draw() {
   updateHands();
   Engine.update(engine);
   pebbles = pebbles.filter((pebble) => {
-    if (millis() - pebble.createTime > 30000) {
+    if (millis() - pebble.createTime > 60000) {
       World.remove(world, pebble.body);
       return false;
     }
@@ -130,7 +102,7 @@ function drawKeypoints() {
           let newPebble = new Pebble(
             keypoint.position.x,
             keypoint.position.y,
-            random(4, 40),
+            random(4, 100),
             millis(),
             color(random(360), 80, 90)
           );
