@@ -17,7 +17,7 @@ class Pebble {
     this.body = Bodies.circle(x, y, size / 2, {
       restitution: 0.8,
       friction: 0.5,
-      mass: 0.5 * size, // Realistic mass for better physics interaction
+      mass: 0.5, // Realistic mass for better physics interaction
       density: 0.5,
     });
     this.size = size;
@@ -58,8 +58,8 @@ function setup() {
   // Create rectangular bodies for left and right arms
   // Initially position these at a default location
   // Create rectangular bodies for left and right hands with increased mass
-  leftHand = Bodies.circle(100, 100, 30, { isStatic: false, mass: 10 }); // Increased mass
-  rightHand = Bodies.circle(100, 100, 30, { isStatic: false, mass: 10 }); // Increased mass
+  leftHand = Bodies.circle(100, 150, 30, { isStatic: false, mass: 100, density: 100 }); // Increased mass
+  rightHand = Bodies.circle(100, 150, 30, { isStatic: false, mass: 100, density: 100 }); // Increased mass
   World.add(world, [leftHand, rightHand]);
 
   poseNet = ml5.poseNet(video, modelReady);
@@ -102,7 +102,7 @@ function drawKeypoints() {
           let newPebble = new Pebble(
             keypoint.position.x,
             keypoint.position.y,
-            random(4, 100),
+            random(4, 50),
             millis(),
             color(random(360), 80, 90)
           );
