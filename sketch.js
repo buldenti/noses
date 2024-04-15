@@ -12,6 +12,15 @@ PoseNet example using p5.js
 
 let pebbles = []; // create an array to hold the pebble objects
 let gravity = 1.04; // set a value for gravity
+let video;
+let poseNet;
+let poses = [];
+let drawing;
+
+let colorMap = new Map(); // Map to store colors for each pose
+
+let fillColor;
+let lastColorChangeTime = 0;
 
 // create a Pebble class
 class Pebble {
@@ -23,6 +32,7 @@ class Pebble {
   // add method to show pebble
   showPebble() {
     // pass the parameters for "this" specific pebble
+    fill(fillColor);
     circle(this.x, this.y, this.size);
   }
 
@@ -42,13 +52,9 @@ class Pebble {
   }
 }
 
-let video;
-let poseNet;
-let poses = [];
-let drawing;
-
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  colorMode(HSB, 360, 100, 100); // Set color mode to HSB
   video = createCapture(VIDEO);
   video.size(width, height);
 
@@ -61,6 +67,9 @@ function setup() {
   });
   // Hide the video element, and just show the canvas
   video.hide();
+
+  // Initialize fill color
+  changeFillColor();
 }
 
 function modelReady() {
@@ -84,6 +93,15 @@ function draw() {
     pebbles[i].dropPebble(height);
   }
   pop();
+
+  if (millis() - lastColorChangeTime > 7000) {
+    changeFillColor();
+  }
+}
+
+function changeFillColor() {
+  fillColor = color(random(360), 80, 90); // Hue varies, high saturation and brightness
+  lastColorChangeTime = millis();
 }
 
 /// A function to draw ellipses over the detected keypoints
