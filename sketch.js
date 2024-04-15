@@ -1,75 +1,100 @@
-// Copyright (c) 2019 ml5
-//
-// This software is released under the MIT License.
-// https://opensource.org/licenses/MIT
+let Engine = Matter.Engine,
+  World = Matter.World,
+  Bodies = Matter.Bodies,
+  engine,
+  world;
 
-/* ===
-ml5 Example
-PoseNet example using p5.js
-=== */
-// How to make the pebbles stop at the ground
-// https://editor.p5js.org/whatmakeart/sketches/mHoGNjdbF
-
-let pebbles = []; // create an array to hold the pebble objects
-let gravity = 1.04; // set a value for gravity
+let pebbles = [];
 let video;
 let poseNet;
 let poses = [];
-let drawing;
+let lastPebbleTime = 0; // Debounce control
+let debounceInterval = 150; // Minimum time between pebble creations
+let leftHand, rightHand; // collision bodies
 
-let colorMap = new Map(); // Map to store colors for each pose
-
-let fillColor;
-let lastColorChangeTime = 0;
-
-// create a Pebble class
 class Pebble {
-  constructor(x, y, size) {
-    this.x = x;
-    this.y = y;
+  constructor(x, y, size, createTime, pebbleColor) {
+    this.body = Bodies.circle(x, y, size / 2, {
+      restitution: 0.8,
+      friction: 0.5,
+      mass: 0.5, // Realistic mass for better physics interaction
+      density: 0.5,
+    });
     this.size = size;
+    this.createTime = createTime;
+    this.pebbleColor = pebbleColor;
+    this.originalSize = size; // Store original size for resetting
+    World.add(world, this.body);
   }
-  // add method to show pebble
+
   showPebble() {
-    // pass the parameters for "this" specific pebble
-    fill(fillColor);
-    circle(this.x, this.y, this.size);
-  }
-
-  // add drop method to pebble class
-  dropPebble(ground) {
-    // pebble falls by multiplying "this" specific "y" by "gravity"
-    this.y = this.y * gravity;
-
-    // check if pebble hit the ground
-    // add half the size (radius) to height and see if greater than the "ground" value passed in
-    // could pass a different value for ground to make pebbles stop sooner
-    // if it is at the ground then set the "this.y" to the ground minus the radius since the pixels count from the top of the screen
-    if (this.y + this.size / 2 >= ground) {
-      this.y = ground - this.size / 2;
-      //this.x++
-    }
+    const pos = this.body.position;
+    const angle = this.body.angle;
+    push();
+    translate(pos.x, pos.y);
+    rotate(angle);
+    fill(this.pebbleColor);
+    ellipse(0, 0, this.size);
+    pop();
   }
 }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  colorMode(HSB, 360, 100, 100); // Set color mode to HSB
+  colorMode(HSB, 360, 100, 100);
   video = createCapture(VIDEO);
   video.size(width, height);
 
-  // Create a new poseNet method with a single detection
+  engine = Engine.create();
+  world = engine.world;
+  engine.world.gravity.y = 1;
+
+  // Create floor and walls
+  let floor = Bodies.rectangle(width / 2, height, width, 20, { isStatic: true });
+  let leftWall = Bodies.rectangle(0, height / 2, 20, height, { isStatic: true });
+  let rightWall = Bodies.rectangle(width, height / 2, 20, height, { isStatic: true });
+  World.add(world, [floor, leftWall, rightWall]);
+
+  // Create rectangular bodies for left and right arms
+  // Initially position these at a default location
+  leftHand = Bodies.rectangle(100, 100, 10, 100, { isStatic: false, render: { visible: true } });
+  rightHand = Bodies.rectangle(100, 100, 10, 100, { isStatic: false, render: { visible: true } });
+  World.add(world, [leftHand, rightHand]);
+
   poseNet = ml5.poseNet(video, modelReady);
-  // This sets up an event that fills the global variable "poses"
-  // with an array every time new poses are detected
-  poseNet.on("pose", function (results) {
-    poses = results;
-  });
-  // Hide the video element, and just show the canvas
+  poseNet.on("pose", (results) => (poses = results));
   video.hide();
 
-  // Initialize fill color
-  changeFillColor();
+  Matter.Events.on(engine, "collisionStart", function (event) {
+    let pairs = event.pairs;
+    pairs.forEach(function (pair) {
+      let hand = null;
+      let pebble = null;
+
+      // Determine if the collision is between a hand and a pebble
+      if (pair.bodyA === leftHand || pair.bodyA === rightHand) {
+        hand = pair.bodyA;
+        pebble = pebbles.find((p) => p.body === pair.bodyB);
+      } else if (pair.bodyB === leftHand || pair.bodyB === rightHand) {
+        hand = pair.bodyB;
+        pebble = pebbles.find((p) => p.body === pair.bodyA);
+      }
+
+      if (hand && pebble) {
+        // Calculate relative velocity
+        let relativeVelocity = Matter.Vector.sub(hand.velocity, pebble.body.velocity);
+        let speed = Matter.Vector.magnitude(relativeVelocity);
+
+        // Apply a force based on the speed of the collision
+        let forceMagnitude = speed * pebble.body.mass * 0.05; // Adjust multiplier based on desired intensity
+        let forceDirection = Matter.Vector.normalise(relativeVelocity);
+        let force = Matter.Vector.mult(forceDirection, forceMagnitude);
+
+        // Apply the force to the pebble
+        Matter.Body.applyForce(pebble.body, pebble.body.position, force);
+      }
+    });
+  });
 }
 
 function modelReady() {
@@ -77,59 +102,115 @@ function modelReady() {
 }
 
 function draw() {
-  //
   push();
-  translate(video.width, 0); // move video to left 1 full width
-  scale(-1, 1); // flip the video
+  translate(video.width, 0);
+  scale(-1, 1);
   image(video, 0, 0, width, height);
   drawKeypoints();
-
-  //console.log(poses);
-  // We can call both functions to draw all keypoints and the skeletons
-
-  for (let i = 0; i < pebbles.length; i++) {
-    pebbles[i].showPebble();
-    // pass the height in for ground or any other y position then call dropPebble
-    pebbles[i].dropPebble(height);
-  }
+  updateHands();
+  Engine.update(engine);
+  pebbles = pebbles.filter((pebble) => {
+    if (millis() - pebble.createTime > 13000) {
+      World.remove(world, pebble.body);
+      return false;
+    }
+    return true;
+  });
+  pebbles.forEach((pebble) => pebble.showPebble());
   pop();
+}
 
-  if (millis() - lastColorChangeTime > 7000) {
-    changeFillColor();
+function drawKeypoints() {
+  if (millis() - lastPebbleTime > debounceInterval) {
+    poses.forEach(({ pose }) => {
+      pose.keypoints
+        .filter((kp) => kp.score > 0.5 && (kp.part === "nose" || kp.part === "mouth"))
+        .forEach((keypoint) => {
+          let newPebble = new Pebble(
+            keypoint.position.x,
+            keypoint.position.y,
+            random(4, 40),
+            millis(),
+            color(random(360), 80, 90)
+          );
+          pebbles.push(newPebble);
+        });
+    });
+    lastPebbleTime = millis();
   }
 }
 
-function changeFillColor() {
-  fillColor = color(random(360), 80, 90); // Hue varies, high saturation and brightness
-  lastColorChangeTime = millis();
+function updateHands() {
+  poses.forEach(({ pose }) => {
+    // Update for right arm
+    if (pose.keypoints[10].score > 0.5 && pose.keypoints[9].score > 0.5) {
+      // Check if both elbow and hand are detected
+      let deltaX = pose.keypoints[10].position.x - pose.keypoints[9].position.x; // Elbow - Hand
+      let deltaY = pose.keypoints[10].position.y - pose.keypoints[9].position.y;
+      let angle = Math.atan2(deltaY, deltaX);
+      let length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      Matter.Body.setPosition(rightHand, {
+        x: (pose.keypoints[10].position.x + pose.keypoints[9].position.x) / 2,
+        y: (pose.keypoints[10].position.y + pose.keypoints[9].position.y) / 2,
+      });
+      Matter.Body.setAngle(rightHand, angle);
+      Matter.Body.set(rightHand, { width: 10, height: length });
+    }
+
+    // Update for left arm
+    if (pose.keypoints[6].score > 0.5 && pose.keypoints[7].score > 0.5) {
+      let deltaX = pose.keypoints[6].position.x - pose.keypoints[7].position.x;
+      let deltaY = pose.keypoints[6].position.y - pose.keypoints[7].position.y;
+      let angle = Math.atan2(deltaY, deltaX);
+      let length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      Matter.Body.setPosition(leftHand, {
+        x: (pose.keypoints[6].position.x + pose.keypoints[7].position.x) / 2,
+        y: (pose.keypoints[6].position.y + pose.keypoints[7].position.y) / 2,
+      });
+      Matter.Body.setAngle(leftHand, angle);
+      Matter.Body.set(leftHand, { width: 10, height: length });
+    }
+  });
 }
 
-/// A function to draw ellipses over the detected keypoints
-function drawKeypoints() {
-  // Loop through all the poses detected
-  for (let i = 0; i < poses.length; i++) {
-    // For each pose detected, loop through all the keypoints
-    let pose = poses[i].pose;
-    for (let j = 0; j < pose.keypoints.length; j++) {
-      // A keypoint is an object describing a body part (like rightArm or leftShoulder)
-      let keypoint = pose.keypoints[j]; // This seems to only capture the first keypoint, consider changing to pose.keypoints[j] to use all keypoints
-      let leftPosition = pose.keypoints[1].position.x;
-      let rightPosition = pose.keypoints[2].position.x;
-      let noseSize = abs(leftPosition - rightPosition);
-      fill(255, 0, 0);
-      noStroke();
-      //console.log(pose.keypoints.[1].position);
-      if (pebbles.length >= 8000) {
-        pebbles.shift(); // Remove the oldest pebble if the array size limit is reached
+function matterCollisions() {
+  Matter.Events.on(engine, "collisionStart", function (event) {
+    let pairs = event.pairs;
+    pairs.forEach(function (pair) {
+      let hand = null;
+      let pebble = null;
+
+      // Determine if the collision is between a hand and a pebble
+      if (pair.bodyA === leftHand || pair.bodyA === rightHand) {
+        hand = pair.bodyA;
+        pebble = pebbles.find((p) => p.body === pair.bodyB);
+      } else if (pair.bodyB === leftHand || pair.bodyB === rightHand) {
+        hand = pair.bodyB;
+        pebble = pebbles.find((p) => p.body === pair.bodyA);
       }
 
-      pebbles.push(new Pebble(keypoint.position.x, keypoint.position.y, noseSize));
-    }
-  }
+      if (hand && pebble) {
+        // Calculate relative velocity
+        let relativeVelocity = Matter.Vector.sub(hand.velocity, pebble.body.velocity);
+        let speed = Matter.Vector.magnitude(relativeVelocity);
+
+        // Apply a force based on the speed of the collision
+        let forceMagnitude = speed * pebble.body.mass * 0.05; // Adjust multiplier based on desired intensity
+        let forceDirection = Matter.Vector.normalise(relativeVelocity);
+        let force = Matter.Vector.mult(forceDirection, forceMagnitude);
+
+        // Apply the force to the pebble
+        Matter.Body.applyForce(pebble.body, pebble.body.position, force);
+      }
+    });
+  });
 }
 
-// Resize the canvas when the
-// browser's size changes.
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+  World.remove(world, [floor, leftWall, rightWall]);
+  floor = Bodies.rectangle(width / 2, height, width, 20, { isStatic: true });
+  leftWall = Bodies.rectangle(0, height / 2, 20, height, { isStatic: true });
+  rightWall = Bodies.rectangle(width, height / 2, 20, height, { isStatic: true });
+  World.add(world, [floor, leftWall, rightWall]);
 }
