@@ -45,7 +45,26 @@ function setup() {
   video = createCapture(VIDEO);
   video.size(width, height);
 
-  engine = Engine.create();
+  engine = Engine.create({
+    positionIterations: 6,
+    velocityIterations: 4,
+    constraintIterations: 2,
+    enableSleeping: false,
+    events: [],
+    plugin: {},
+    timing: {
+      timestamp: 0,
+      timeScale: 1,
+    },
+    broadphase: {
+      controller: Matter.Grid,
+    },
+    world: world,
+    render: {
+      visible: true,
+    },
+    collisionSlop: 0.1, // Try reducing this value
+  });
   world = engine.world;
   engine.world.gravity.y = 1;
 
@@ -58,9 +77,15 @@ function setup() {
   // Create rectangular bodies for left and right arms
   // Initially position these at a default location
   // Create rectangular bodies for left and right hands with increased mass
-  leftHand = Bodies.circle(100, 150, 30, { isStatic: false, mass: 100, density: 100 }); // Increased mass
-  rightHand = Bodies.circle(100, 150, 30, { isStatic: false, mass: 100, density: 100 }); // Increased mass
+  leftHand = Bodies.circle(100, 150, 30, { isStatic: true, mass: 100, density: 0.5 });
+  rightHand = Bodies.circle(100, 150, 30, { isStatic: true, mass: 100, density: 0.5 });
+
   World.add(world, [leftHand, rightHand]);
+  // Create circular bodies for feet with similar properties to hands
+  leftFoot = Bodies.circle(100, 300, 30, { isStatic: false, mass: 10, density: 0.1 });
+  rightFoot = Bodies.circle(200, 300, 30, { isStatic: false, mass: 10, density: 0.1 });
+
+  World.add(world, [leftFoot, rightFoot]);
 
   poseNet = ml5.poseNet(video, modelReady);
   poseNet.on("pose", (results) => (poses = results));
@@ -114,25 +139,22 @@ function drawKeypoints() {
 }
 
 function updateHands() {
-  poses.forEach(({ pose }) => {
-    // Update for right hand using wrist (keypoint 10)
-    if (pose.keypoints[10].score > 0.9) {
-      let rightWrist = pose.keypoints[10].position;
-      Matter.Body.setPosition(rightHand, {
-        x: rightWrist.x,
-        y: rightWrist.y,
-      });
-    }
+  // Limit updates to every few frames
+  if (frameCount % 3 === 0) {
+    poses.forEach(({ pose }) => {
+      updateBodyPosition(leftHand, pose.keypoints[9]); // Assuming left wrist is keypoint 9
+      updateBodyPosition(rightHand, pose.keypoints[10]); // Assuming right wrist is keypoint 10
+    });
+  }
+}
 
-    // Update for left hand using wrist (keypoint 9)
-    if (pose.keypoints[9].score > 0.9) {
-      let leftWrist = pose.keypoints[9].position;
-      Matter.Body.setPosition(leftHand, {
-        x: leftWrist.x,
-        y: leftWrist.y,
-      });
-    }
-  });
+function updateBodyPosition(body, keypoint) {
+  if (keypoint.score > 0.9) {
+    Matter.Body.setPosition(body, {
+      x: keypoint.position.x,
+      y: keypoint.position.y,
+    });
+  }
 }
 
 function drawHands() {
@@ -147,25 +169,59 @@ function drawHands() {
   ellipse(posRight.x, posRight.y, 6, 6);
 }
 
+function updateLimbs() {
+  // Limit updates to every few frames to reduce computation
+  if (frameCount % 3 === 0) {
+    poses.forEach(({ pose }) => {
+      updateBodyPosition(leftFoot, pose.keypoints[15]); // Assuming left ankle is keypoint 15
+      updateBodyPosition(rightFoot, pose.keypoints[16]); // Assuming right ankle is keypoint 16
+    });
+  }
+}
+
+function updateBodyPosition(body, keypoint) {
+  if (keypoint.score > 0.9) {
+    Matter.Body.setPosition(body, {
+      x: keypoint.position.x,
+      y: keypoint.position.y,
+    });
+  }
+}
+
+function drawLimbs() {
+  // Draw hands code...
+
+  // Draw left foot
+  const posLeftFoot = leftFoot.position;
+  fill(0, 0, 255); // Blue color for left foot
+  ellipse(posLeftFoot.x, posLeftFoot.y, 30, 30); // Visualization diameter
+
+  // Draw right foot
+  const posRightFoot = rightFoot.position;
+  fill(255, 255, 0); // Yellow color for right foot
+  ellipse(posRightFoot.x, posRightFoot.y, 30, 30);
+}
+
 function matterCollisions() {
   Matter.Events.on(engine, "collisionStart", function (event) {
     let pairs = event.pairs;
+
     pairs.forEach(function (pair) {
-      let hand = null;
+      let limb = null; // This can be either a hand or a foot
       let pebble = null;
 
-      // Determine if the collision is between a hand and a pebble
-      if (pair.bodyA === leftHand || pair.bodyA === rightHand) {
-        hand = pair.bodyA;
+      // Determine if the collision is between a hand/foot and a pebble
+      if ([leftHand, rightHand, leftFoot, rightFoot].includes(pair.bodyA)) {
+        limb = pair.bodyA;
         pebble = pebbles.find((p) => p.body === pair.bodyB);
-      } else if (pair.bodyB === leftHand || pair.bodyB === rightHand) {
-        hand = pair.bodyB;
+      } else if ([leftHand, rightHand, leftFoot, rightFoot].includes(pair.bodyB)) {
+        limb = pair.bodyB;
         pebble = pebbles.find((p) => p.body === pair.bodyA);
       }
 
-      if (hand && pebble) {
+      if (limb && pebble) {
         // Calculate relative velocity
-        let relativeVelocity = Matter.Vector.sub(hand.velocity, pebble.body.velocity);
+        let relativeVelocity = Matter.Vector.sub(limb.velocity, pebble.body.velocity);
         let speed = Matter.Vector.magnitude(relativeVelocity);
 
         // Apply a force based on the speed of the collision
