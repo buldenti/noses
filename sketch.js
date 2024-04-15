@@ -47,11 +47,8 @@ let poseNet;
 let poses = [];
 let drawing;
 
-
-
 function setup() {
-  createCanvas(640, 480);
-  drawingCanvas = createGraphics(width,height);
+  createCanvas(windowWidth, windowHeight);
   video = createCapture(VIDEO);
   video.size(width, height);
 
@@ -59,69 +56,65 @@ function setup() {
   poseNet = ml5.poseNet(video, modelReady);
   // This sets up an event that fills the global variable "poses"
   // with an array every time new poses are detected
-  poseNet.on('pose', function(results) {
+  poseNet.on("pose", function (results) {
     poses = results;
   });
   // Hide the video element, and just show the canvas
   video.hide();
-    for (i = 0; i < 50; i++) {
+  for (i = 0; i < 50; i++) {
     pebbles.push(new Pebble(random(width), random(height), random(10, 40)));
   }
 }
 
 function modelReady() {
-  select('#status').html('Model Loaded');
+  select("#status").html("Model Loaded");
 }
 
-
-
 function draw() {
-  //image(video, 0, 0, width, height);
+  //
   push();
   translate(video.width, 0); // move video to left 1 full width
-  scale(-1,1); // flip the video
- image(video, 0,0); // show video as image
+  scale(-1, 1); // flip the video
+  image(video, 0, 0, width, height);
   drawKeypoints();
 
   //console.log(poses);
   // We can call both functions to draw all keypoints and the skeletons
- 
-  //drawSkeleton();
-  //console.log(poses);
-  
-    for (let i = 0; i < pebbles.length; i++) {
+
+  for (let i = 0; i < pebbles.length; i++) {
     pebbles[i].showPebble();
     // pass the height in for ground or any other y position then call dropPebble
     pebbles[i].dropPebble(height);
   }
   pop();
-    
 }
 
 /// A function to draw ellipses over the detected keypoints
-function drawKeypoints()  {
+function drawKeypoints() {
   // Loop through all the poses detected
   for (let i = 0; i < poses.length; i++) {
     // For each pose detected, loop through all the keypoints
     let pose = poses[i].pose;
     for (let j = 0; j < pose.keypoints.length; j++) {
       // A keypoint is an object describing a body part (like rightArm or leftShoulder)
-      let keypoint = pose.keypoints[0]; // This seems to only capture the first keypoint, consider changing to pose.keypoints[j] to use all keypoints
-      // Only draw an ellipse if the pose probability is bigger than 0.2
-      if (keypoint.score > 0.2) {
-        fill(255, 0, 0);
-        noStroke();
-        drawingCanvas.ellipse(keypoint.position.x, keypoint.position.y, 10, 10);
-        if (pebbles.length >= 800) {
-          pebbles.shift(); // Remove the oldest pebble if the array size limit is reached
-        }
-        pebbles.push(new Pebble(keypoint.position.x, keypoint.position.y, random(10, 40)));
+      let keypoint = pose.keypoints[j]; // This seems to only capture the first keypoint, consider changing to pose.keypoints[j] to use all keypoints
+      let leftPosition = pose.keypoints[1].position.x;
+      let rightPosition = pose.keypoints[2].position.x;
+      let noseSize = abs(leftPosition - rightPosition);
+      fill(255, 0, 0);
+      noStroke();
+      //console.log(pose.keypoints.[1].position);
+      if (pebbles.length >= 8000) {
+        pebbles.shift(); // Remove the oldest pebble if the array size limit is reached
       }
+
+      pebbles.push(new Pebble(keypoint.position.x, keypoint.position.y, noseSize));
     }
   }
-  image(drawingCanvas, 0, 0);
 }
 
-function mouseDragged() {
- 
+// Resize the canvas when the
+// browser's size changes.
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }
