@@ -61,9 +61,6 @@ function setup() {
   });
   // Hide the video element, and just show the canvas
   video.hide();
-  for (i = 0; i < 50; i++) {
-    pebbles.push(new Pebble(random(width), random(height), random(10, 40)));
-  }
 }
 
 function modelReady() {
