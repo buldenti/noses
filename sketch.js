@@ -9,7 +9,7 @@ let video;
 let poseNet;
 let poses = [];
 let lastPebbleTime = 0; // Debounce control
-let debounceInterval = 150; // Minimum time between pebble creations
+let debounceInterval = 100; // Minimum time between pebble creations
 let leftHand, rightHand; // collision bodies
 
 class Pebble {
@@ -57,8 +57,8 @@ function setup() {
 
   // Create rectangular bodies for left and right arms
   // Initially position these at a default location
-  leftHand = Bodies.rectangle(100, 100, 10, 100, { isStatic: false, render: { visible: true } });
-  rightHand = Bodies.rectangle(100, 100, 10, 100, { isStatic: false, render: { visible: true } });
+  leftHand = Bodies.circle(100, 100, 100, { isStatic: false }); // radius of 30
+  rightHand = Bodies.circle(100, 100, 100, { isStatic: false });
   World.add(world, [leftHand, rightHand]);
 
   poseNet = ml5.poseNet(video, modelReady);
@@ -86,7 +86,7 @@ function setup() {
         let speed = Matter.Vector.magnitude(relativeVelocity);
 
         // Apply a force based on the speed of the collision
-        let forceMagnitude = speed * pebble.body.mass * 0.05; // Adjust multiplier based on desired intensity
+        let forceMagnitude = speed * pebble.body.mass * 0.01; // Adjust multiplier based on desired intensity
         let forceDirection = Matter.Vector.normalise(relativeVelocity);
         let force = Matter.Vector.mult(forceDirection, forceMagnitude);
 
@@ -107,10 +107,11 @@ function draw() {
   scale(-1, 1);
   image(video, 0, 0, width, height);
   drawKeypoints();
+  drawHands(); // Draw the hand rectangles
   updateHands();
   Engine.update(engine);
   pebbles = pebbles.filter((pebble) => {
-    if (millis() - pebble.createTime > 13000) {
+    if (millis() - pebble.createTime > 30000) {
       World.remove(world, pebble.body);
       return false;
     }
@@ -142,35 +143,36 @@ function drawKeypoints() {
 
 function updateHands() {
   poses.forEach(({ pose }) => {
-    // Update for right arm
-    if (pose.keypoints[10].score > 0.5 && pose.keypoints[9].score > 0.5) {
-      // Check if both elbow and hand are detected
-      let deltaX = pose.keypoints[10].position.x - pose.keypoints[9].position.x; // Elbow - Hand
-      let deltaY = pose.keypoints[10].position.y - pose.keypoints[9].position.y;
-      let angle = Math.atan2(deltaY, deltaX);
-      let length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    // Update for right hand using wrist (keypoint 10)
+    if (pose.keypoints[10].score > 0.9) {
+      let rightWrist = pose.keypoints[10].position;
       Matter.Body.setPosition(rightHand, {
-        x: (pose.keypoints[10].position.x + pose.keypoints[9].position.x) / 2,
-        y: (pose.keypoints[10].position.y + pose.keypoints[9].position.y) / 2,
+        x: rightWrist.x,
+        y: rightWrist.y,
       });
-      Matter.Body.setAngle(rightHand, angle);
-      Matter.Body.set(rightHand, { width: 10, height: length });
     }
 
-    // Update for left arm
-    if (pose.keypoints[6].score > 0.5 && pose.keypoints[7].score > 0.5) {
-      let deltaX = pose.keypoints[6].position.x - pose.keypoints[7].position.x;
-      let deltaY = pose.keypoints[6].position.y - pose.keypoints[7].position.y;
-      let angle = Math.atan2(deltaY, deltaX);
-      let length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    // Update for left hand using wrist (keypoint 9)
+    if (pose.keypoints[9].score > 0.9) {
+      let leftWrist = pose.keypoints[9].position;
       Matter.Body.setPosition(leftHand, {
-        x: (pose.keypoints[6].position.x + pose.keypoints[7].position.x) / 2,
-        y: (pose.keypoints[6].position.y + pose.keypoints[7].position.y) / 2,
+        x: leftWrist.x,
+        y: leftWrist.y,
       });
-      Matter.Body.setAngle(leftHand, angle);
-      Matter.Body.set(leftHand, { width: 10, height: length });
     }
   });
+}
+
+function drawHands() {
+  // Draw left hand
+  const posLeft = leftHand.position;
+  fill(255, 0, 0); // Red color for left hand
+  ellipse(posLeft.x, posLeft.y, 6, 6); // Diameter set to 60 for visualization
+
+  // Draw right hand
+  const posRight = rightHand.position;
+  fill(0, 255, 0); // Green color for right hand
+  ellipse(posRight.x, posRight.y, 6, 6);
 }
 
 function matterCollisions() {
